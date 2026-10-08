@@ -1,0 +1,16 @@
+{
+  "MELD": {
+    "dataset": "MELD",
+    "tune_seed": 0,
+    "L1_ARGS": "--cb_beta 0.995 --focal_gamma 1.0",
+    "L2_ARGS": "--ls_eps 0.02 --ls_neighbor_mass 0.5",
+    "L4_ARGS": "--span_penalty 0.02"
+  },
+  "IEMOCAP": {
+    "dataset": "IEMOCAP",
+    "tune_seed": 2007,
+    "L1_ARGS": "--cb_beta 0.9999 --focal_gamma 2.0",
+    "L2_ARGS": "--ls_eps 0.1 --ls_neighbor_mass 0.9",
+    "L4_ARGS": "--span_penalty 0.1"
+  }
+}

@@ -1,0 +1,2 @@
+label,span,acc,weighted_f1,ece,ece_confusable_preds,nll,avg_conf,detail
+final_ALL_s2007,28.2,70.36352433764634,70.64413147750864,4.665355311025417,5.067288038026649,0.73832331473928,65.69816902662092,"self_event=n/a(identity mask), cross_event=10.80, contagion=38.01, cross_emotion=35.85"

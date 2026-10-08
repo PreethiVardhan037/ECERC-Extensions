@@ -1,0 +1,114 @@
+{
+  "dataset": "IEMOCAP",
+  "checkpoint": "../tuning_results/IEMOCAP/ckpts/final_ALL_s2007.pkl",
+  "T": 0.8141005837407094,
+  "T_mc": 0.5475148557008368,
+  "mc_passes": 30,
+  "n_bins": 15,
+  "confusable_classes": [
+    "hap",
+    "ang",
+    "exc",
+    "fru"
+  ],
+  "valid": {
+    "Uncalibrated": {
+      "acc": 75.45180722891565,
+      "weighted_f1": 75.4105868864699,
+      "ece": 7.000345761717661,
+      "ece_confusable_preds": 3.4146096133419053,
+      "ece_other_preds": 13.85727979983972,
+      "n_confusable_preds": 436,
+      "n_other_preds": 228,
+      "nll": 0.6806841265142998,
+      "brier": 0.37425808789474774,
+      "avg_conf": 68.45146146719799
+    },
+    "Temp scaling": {
+      "acc": 75.45180722891565,
+      "weighted_f1": 75.4105868864699,
+      "ece": 3.485135033059901,
+      "ece_confusable_preds": 4.998717414536585,
+      "ece_other_preds": 8.563934605387127,
+      "n_confusable_preds": 436,
+      "n_other_preds": 228,
+      "nll": 0.6677627041633456,
+      "brier": 0.36972712020645887,
+      "avg_conf": 73.69171943680362
+    },
+    "MC-Dropout": {
+      "acc": 75.45180722891565,
+      "weighted_f1": 75.24099155214171,
+      "ece": 15.841697151480696,
+      "ece_confusable_preds": 13.252431709808231,
+      "ece_other_preds": 20.817396581429463,
+      "n_confusable_preds": 422,
+      "n_other_preds": 242,
+      "nll": 0.7374579873775401,
+      "brier": 0.3943869034461964,
+      "avg_conf": 59.61011007743496
+    },
+    "MC-Dropout + TS": {
+      "acc": 75.45180722891565,
+      "weighted_f1": 75.24099155214171,
+      "ece": 2.8463252686079303,
+      "ece_confusable_preds": 3.039688828492005,
+      "ece_other_preds": 5.554345433097065,
+      "n_confusable_preds": 422,
+      "n_other_preds": 242,
+      "nll": 0.6523385988192647,
+      "brier": 0.36146070647509354,
+      "avg_conf": 74.00472787042123
+    }
+  },
+  "test": {
+    "Uncalibrated": {
+      "acc": 70.36352433764634,
+      "weighted_f1": 70.64413147750864,
+      "ece": 4.665355311025417,
+      "ece_confusable_preds": 5.067288038026649,
+      "ece_other_preds": 7.095411640321693,
+      "n_confusable_preds": 998,
+      "n_other_preds": 625,
+      "nll": 0.73832331473928,
+      "brier": 0.4090931137372254,
+      "avg_conf": 65.69816902662092
+    },
+    "Temp scaling": {
+      "acc": 70.36352433764634,
+      "weighted_f1": 70.64413147750864,
+      "ece": 1.967238285511038,
+      "ece_confusable_preds": 4.075245329230172,
+      "ece_other_preds": 4.953780293353638,
+      "n_confusable_preds": 998,
+      "n_other_preds": 625,
+      "nll": 0.7262065333949724,
+      "brier": 0.4054913983650393,
+      "avg_conf": 70.97657160553926
+    },
+    "MC-Dropout": {
+      "acc": 70.48675292667899,
+      "weighted_f1": 70.74781503599917,
+      "ece": 13.64303130570557,
+      "ece_confusable_preds": 12.36571987405311,
+      "ece_other_preds": 16.18206767714691,
+      "n_confusable_preds": 985,
+      "n_other_preds": 638,
+      "nll": 0.807078987223545,
+      "brier": 0.43503272821446737,
+      "avg_conf": 56.99934206763937
+    },
+    "MC-Dropout + TS": {
+      "acc": 70.54836722119532,
+      "weighted_f1": 70.80802969132428,
+      "ece": 2.0781987660514223,
+      "ece_confusable_preds": 4.2702498386882715,
+      "ece_other_preds": 3.926298737410531,
+      "n_confusable_preds": 985,
+      "n_other_preds": 638,
+      "nll": 0.7323329563713865,
+      "brier": 0.40827637141687584,
+      "avg_conf": 71.2419188144855
+    }
+  }
+}

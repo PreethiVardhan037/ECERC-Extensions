@@ -1,0 +1,14 @@
+[
+  {
+    "acc": 66.85823754789271,
+    "weighted_f1": 66.0659619422698,
+    "ece": 5.505996821679146,
+    "ece_confusable_preds": 4.1683433135849866,
+    "nll": 0.9861071549193181,
+    "avg_conf": 61.53931255673041,
+    "label": "final_ALL_s0",
+    "span": "4.5",
+    "x": 4.49171495065093,
+    "detail": "self_event=n/a(identity mask), cross_event=2.36, contagion=4.62, cross_emotion=6.49"
+  }
+]

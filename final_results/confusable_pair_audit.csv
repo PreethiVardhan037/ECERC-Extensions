@@ -1,0 +1,10 @@
+dataset,method,pair,two_way_confusions
+IEMOCAP,baseline,Happy ↔ Excited,99
+IEMOCAP,baseline,Angry ↔ Frustrated,97
+IEMOCAP,L2,Happy ↔ Excited,85
+IEMOCAP,L2,Angry ↔ Frustrated,92
+IEMOCAP,ALL,Happy ↔ Excited,104
+IEMOCAP,ALL,Angry ↔ Frustrated,99
+MELD,baseline,Disgust ↔ Angry,26
+MELD,L2,Disgust ↔ Angry,29
+MELD,ALL,Disgust ↔ Angry,33

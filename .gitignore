@@ -1,0 +1,54 @@
+# =========================
+# macOS
+# =========================
+.DS_Store
+
+# =========================
+# Python
+# =========================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# =========================
+# Jupyter / generated notebook files
+# =========================
+.ipynb_checkpoints/
+.virtual_documents/
+
+# =========================
+# Temporary analysis file
+# =========================
+project_analysis.txt
+
+# =========================
+# Large downloaded/generated data
+# =========================
+data_download/
+data/**/*.pkl
+
+# =========================
+# Model files
+# =========================
+IEMOCAP/ECERC_MODEL.pkl
+MELD/ECERC_MODEL.pkl
+
+# =========================
+# Tuning checkpoints
+# =========================
+tuning_results/**/ckpts/
+tuning_results/**/calib/
+
+# =========================
+# Generated tuning logs
+# =========================
+tuning_results/**/logs/
+
+# =========================
+# Miscellaneous archive
+# =========================
+all_files.zip
+
+# Generated serialized state
+state.db

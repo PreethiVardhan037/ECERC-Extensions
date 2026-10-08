@@ -1,0 +1,11 @@
+dataset,method,temperature,uncalibrated_ece,temperature_scaling_ece,mc_dropout_ece,mc_dropout_plus_ts_ece
+MELD,baseline,0.867,5.09,3.27,7.25,3.52
+MELD,L1,0.857,4.79,3.18,7.47,3.17
+MELD,L2,1.142,7.55,3.94,5.63,3.67
+MELD,L4,0.882,3.49,2.66,6.12,2.38
+MELD,ALL,0.825,5.51,2.74,8.1,2.69
+IEMOCAP,baseline,1.411,11.58,3.43,3.97,3.99
+IEMOCAP,L1,0.915,2.53,1.41,10.43,2.32
+IEMOCAP,L2,1.135,5.49,3.09,4.46,3.81
+IEMOCAP,L4,1.373,11.39,5.7,4.32,4.29
+IEMOCAP,ALL,0.814,4.67,1.97,13.64,2.08
