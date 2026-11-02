@@ -44,6 +44,10 @@ class IEMOCAPRobertaDataset(Dataset):
     def __len__(self):
         return self.len
 
+    def dialogue_lengths(self):
+        """[ADDED] number of utterances of every dialogue in this split (used to size the L4 attention span)."""
+        return [len(self.videoLabels[k]) for k in self.keys]
+
     def collate_fn(self, data):
         dat = pd.DataFrame(data)
         return [pad_sequence(dat[i]) if i<5 else pad_sequence(dat[i], True) if i<7 else dat[i].tolist() for i in dat]

@@ -49,7 +49,10 @@ class ScaledDotProductAttention(nn.Module):
 
         attn = F.softmax(attn, dim=-1)
         if span is not None:          # [ADDED] Limitation 4: adaptive attention span
-            attn = span(attn)
+            # rows whose mask allows NO key (e.g. an utterance with no earlier cross-speaker utterance) are softmaxed
+            # by the authors' code over all L keys; the span must not alter them, so they are passed through untouched
+            valid_rows = (mask != 0).any(dim=-1, keepdim=True) if mask is not None else None
+            attn = span(attn, valid_rows)
         attn = self.dropout(attn)
         output = torch.matmul(attn, v)
 
@@ -218,8 +221,8 @@ class AdaptiveSpan(nn.Module):
     Sukhbaatar et al.: keys inside the span are untouched, keys beyond span + ramp are removed, and the
     linear ramp makes the cut differentiable with respect to z. Future keys (d < 0) are left to the
     authors' own masks. With span_ratio = 1 and max_span >= dialogue length the module is the identity,
-    so training starts exactly from the full-history baseline and the span can only shrink when the
-    span penalty outweighs the task loss.
+    so training starts exactly from the full-history baseline (train.py sets max_span from the data and refuses a
+    smaller value) and the span can only shrink when the span penalty outweighs the task loss.
     `max_span` and `ramp` are stored as buffers, so a checkpoint is self-describing.
     NOTE: the mask is applied to the already-computed L x L attention weights, so this learns/limits the effective
     receptive field of each branch/head; it does not reduce the O(L^2) cost of the attention computation itself.
@@ -236,15 +239,32 @@ class AdaptiveSpan(nn.Module):
         """Current span(s) in utterances: shape [n_head] if per-head else [1]."""
         return self.span_ratio.clamp(0.0, 1.0) * self.max_span
 
-    def forward(self, attn):
-        """attn: [B, heads, Lq, Lk] attention weights after the softmax."""
+    MIN_MASS = 1e-2   # renormalisation floor (class constant, not a buffer, so old checkpoints still load)
+
+    def forward(self, attn, valid_rows=None):
+        """
+        attn: [B, heads, Lq, Lk] attention weights after the softmax.
+        valid_rows: optional bool [B, 1 or heads, Lq, 1]; False rows (no allowed key) are returned unchanged.
+        After the cut a row keeps the fraction m = sum(attn * keep) / sum(attn) <= 1 of its mass and is divided by
+        max(m, MIN_MASS): identical to Sukhbaatar's renormalisation whenever m >= MIN_MASS, but the gradient w.r.t. the
+        span stays bounded (1 / MIN_MASS) when almost nothing is left; a row with no mass left becomes the zero vector.
+        Full history (span >= distance of every key) gives keep == 1 and m == 1, i.e. EXACTLY the input.
+        """
         lq, lk = attn.size(-2), attn.size(-1)
+        if lk - 1 > float(self.max_span) and not getattr(self, '_warned', False):
+            self._warned = True
+            print('WARNING [L4]: dialogue length {} exceeds max_span {} -> even the initial span is NOT full history'.format(lk, float(self.max_span)))
         q_idx = torch.arange(lq, device=attn.device).view(lq, 1)
         k_idx = torch.arange(lk, device=attn.device).view(1, lk)
         dist = (q_idx - k_idx).clamp(min=0).to(attn.dtype)                      # [Lq, Lk]; future keys -> 0
         keep = ((self.ramp + self.spans() - dist) / self.ramp).clamp(0.0, 1.0)  # [heads|1, Lq, Lk]
-        attn = attn * keep.unsqueeze(0)
-        return attn / (attn.sum(dim=-1, keepdim=True) + 1e-8)
+        cut = attn * keep.unsqueeze(0)
+        # fraction of the row's original mass that survives the cut (== 1.0 bit-exactly when nothing is cut)
+        retained = cut.sum(dim=-1, keepdim=True) / attn.sum(dim=-1, keepdim=True).clamp(min=1e-12)
+        cut = cut / retained.clamp(min=self.MIN_MASS)
+        if valid_rows is not None:
+            cut = torch.where(valid_rows, cut, attn)
+        return cut
 
 
 # The self-event branch uses the identity mask (it only attends to the target utterance, distance 0),
@@ -324,6 +344,17 @@ class ECERC(nn.Module):
         if not self.adaptive_span:
             return {}
         return {k: m.spans().detach().cpu().flatten().tolist() for k, m in self.span_modules.items()}
+
+    def span_report(self):
+        """Explicit status of every branch: 'self_event' is provably inactive (identity mask, key distance 0)."""
+        if not self.adaptive_span:
+            return {}
+        rep = {}
+        for k, v in self.get_spans().items():
+            rep[k] = {'status': 'inactive (identity mask: the branch only attends to the target utterance, distance 0)'
+                      if k in SPAN_NOOP_BRANCHES else 'active (learned)',
+                      'per_head': v, 'mean': sum(v) / len(v), 'max_span': float(self.span_modules[k].max_span)}
+        return rep
 
     def get_spans_str(self):
         out = []

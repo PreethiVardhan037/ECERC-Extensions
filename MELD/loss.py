@@ -60,7 +60,9 @@ class ECERCImprovedLoss(nn.Module):
     """
 
     def __init__(self, n_classes, class_counts=None, cb_beta=0.999, gamma=0.0,
-                 smoothing=0.0, confusable_pairs=None, neighbor_mass=0.7):
+                 smoothing=0.0, confusable_pairs=None, neighbor_mass=0.7, alpha=None):
+        # `alpha`: explicit per-class weights, used ONLY when class_counts is None. train.py passes the authors' own
+        # class weights here for an L2-only run, so that run differs from the baseline by the label smoothing alone.
         super(ECERCImprovedLoss, self).__init__()
         assert 0.0 <= smoothing < 1.0 and 0.0 <= neighbor_mass <= 1.0
         self.n_classes = n_classes
@@ -70,10 +72,15 @@ class ECERCImprovedLoss(nn.Module):
         # ---- Limitation 1: class-balanced weights from training label counts ----
         self.alpha = None
         if class_counts is not None:
-            counts = torch.as_tensor(class_counts, dtype=torch.float).clamp(min=1.0)
-            effective_num = (1.0 - torch.pow(cb_beta, counts)) / (1.0 - cb_beta)
-            w = 1.0 / effective_num
-            self.alpha = w / w.sum() * n_classes
+            assert 0.0 <= cb_beta < 1.0, 'cb_beta must be in [0, 1) (beta = 1 divides by zero)'
+            counts = torch.as_tensor(class_counts, dtype=torch.float)
+            present = counts > 0                      # a class with zero training examples gets weight 0 and is left out
+            assert bool(present.any()), 'no training examples'   # of the normalisation, instead of a huge fake weight
+            effective_num = (1.0 - torch.pow(cb_beta, counts.clamp(min=1.0))) / (1.0 - cb_beta)
+            w = torch.where(present, 1.0 / effective_num, torch.zeros_like(effective_num))
+            self.alpha = w / w.sum() * int(present.sum())   # mean weight over the PRESENT classes is exactly 1
+        elif alpha is not None:
+            self.alpha = torch.as_tensor(alpha, dtype=torch.float).detach().clone()
 
         # ---- Limitation 2: row y of this matrix = target distribution when the label is y ----
         self.soft_targets = None
@@ -139,5 +146,40 @@ def parse_confusable_pairs(spec, target_names):
     pairs = []
     for item in [s.strip() for s in spec.split(',') if s.strip()]:
         a, b = [s.strip() for s in item.split('-')]
+        if a not in target_names or b not in target_names:
+            raise ValueError("unknown class in confusable pair '{}'; valid names: {}".format(item, target_names))
         pairs.append((target_names.index(a), target_names.index(b)))
     return pairs
+
+
+def smoothing_table_str(loss_f, target_names):
+    """Printable L2 target distribution for every class (row = true label, columns = target probability, in %)."""
+    T = loss_f.soft_targets
+    if T is None:
+        return '(no label smoothing)'
+    head = '{:<6}'.format('true') + ''.join('{:>7}'.format(n) for n in target_names) + '   row sum'
+    rows = [head] + ['{:<6}'.format(target_names[y]) + ''.join('{:>7.2f}'.format(100 * float(v)) for v in T[y]) +
+                     '   {:.4f}'.format(float(T[y].sum())) for y in range(len(target_names))]
+    return '\n'.join(rows)
+
+
+def build_training_loss(args, n_classes, target_names, class_weights, train_counts, authors_gamma):
+    """
+    The ONE place that decides which loss train.py uses (also called by tests/).
+      neither --lim1 nor --lim2 : the authors' own `Loss` (alpha = their class weights only if --class_weight)
+      --lim2 only               : authors' gamma and class weights + confusion-aware label smoothing
+      --lim1 (with/without 2)   : class-balanced alpha (REPLACES the authors' weights, never multiplied with them)
+                                  + focal gamma [+ label smoothing]
+    `class_weights` is the authors' per-class tensor of this dataset; `train_counts` the training label counts.
+    """
+    if not (args.lim1 or args.lim2):
+        return Loss(alpha=class_weights if args.class_weight else None)
+    return ECERCImprovedLoss(
+        n_classes=n_classes,
+        class_counts=train_counts if args.lim1 else None,
+        cb_beta=args.cb_beta,
+        gamma=args.focal_gamma if args.lim1 else authors_gamma,
+        alpha=None if args.lim1 else (class_weights if args.class_weight else None),
+        smoothing=args.ls_eps if args.lim2 else 0.0,
+        confusable_pairs=parse_confusable_pairs(args.confusable_pairs, target_names) if args.lim2 else None,
+        neighbor_mass=args.ls_neighbor_mass)

@@ -7,9 +7,9 @@
                             S stochastic forward passes, probabilities averaged.
     * MC-Dropout + TS       : T fitted on the validation MC-averaged probabilities.
 
-Reports Accuracy / weighted-F1 / ECE / NLL / Brier before vs after, and ECE separately for
-predictions that fall in the confusable classes of the dataset (MELD: Disgust/Angry; IEMOCAP:
-Happy/Excited and Angry/Frustrated) vs. all other predictions. Saves a JSON of results and reliability diagrams.
+Reports Accuracy / weighted- and macro-F1 / ECE / NLL / Brier before vs after (deterministic and stochastic methods in
+separate tables), a POOLED confusable-class ECE, and -- separately for every confusable pair (MELD: Disgust/Angry;
+IEMOCAP: Happy/Excited, Angry/Frustrated) -- ECE over the true-in-pair and predicted-in-pair populations with sample counts. Saves a JSON of results and reliability diagrams.
 
 This file is identical in IEMOCAP/ and MELD/. Run it from inside the dataset folder:
 
@@ -38,6 +38,7 @@ import matplotlib.pyplot as plt
 
 from model import ECERC
 from loss import parse_confusable_pairs
+from eval_utils import ece_score, full_metrics, pair_breakdown, probabilistic_metrics, dump_json   # ONE metric implementation for the whole project
 
 import warnings
 warnings.filterwarnings("ignore")
@@ -171,41 +172,22 @@ def softmax_np(z, T=1.0):
 # --------------------------------------------------------------------------------------
 # metrics
 # --------------------------------------------------------------------------------------
-def ece_score(conf, correct, n_bins=15):
-    """Expected Calibration Error with equal-width confidence bins (Guo et al., 2017)."""
-    if len(conf) == 0:
-        return float('nan')
-    edges = np.linspace(0.0, 1.0, n_bins + 1)
-    ece = 0.0
-    for lo, hi in zip(edges[:-1], edges[1:]):
-        m = (conf > lo) & (conf <= hi)
-        if m.any():
-            ece += m.mean() * abs(correct[m].mean() - conf[m].mean())
-    return float(ece)
-
-
 def compute_metrics(prob, y, confusable_classes, n_bins):
+    """Headline numbers of one probability matrix (all from eval_utils, shared with train.py / the reports)."""
     pred = prob.argmax(1)
     conf = prob.max(1)
     correct = (pred == y).astype(np.float64)
-    in_pair = np.isin(pred, list(confusable_classes))      # prediction falls in a confusable class
-    onehot = np.eye(prob.shape[1])[y]
-    return {
-        'acc': 100 * accuracy_score(y, pred),
-        'weighted_f1': 100 * f1_score(y, pred, average='weighted'),
-        'ece': 100 * ece_score(conf, correct, n_bins),
-        'ece_confusable_preds': 100 * ece_score(conf[in_pair], correct[in_pair], n_bins),
-        'ece_other_preds': 100 * ece_score(conf[~in_pair], correct[~in_pair], n_bins),
-        'n_confusable_preds': int(in_pair.sum()),
-        'n_other_preds': int((~in_pair).sum()),
-        'nll': float(-np.log(np.clip(prob[np.arange(len(y)), y], 1e-12, None)).mean()),
-        'brier': float(((prob - onehot) ** 2).sum(1).mean()),
-        'avg_conf': 100 * float(conf.mean()),
-    }
+    in_pair = np.isin(pred, list(confusable_classes))      # POOLED: prediction falls in any confusable class (per-pair: pair_breakdown)
+    fm = full_metrics(prob, y, CONFIG['target_names'], n_bins)
+    return {'acc': fm['accuracy'], 'weighted_f1': fm['weighted_f1'], 'macro_f1': fm['macro_f1'], 'ece': fm['ece'],
+            'ece_confusable_preds': 100 * ece_score(conf[in_pair], correct[in_pair], n_bins),
+            'ece_other_preds': 100 * ece_score(conf[~in_pair], correct[~in_pair], n_bins),
+            'n_confusable_preds': int(in_pair.sum()), 'n_other_preds': int((~in_pair).sum()),
+            'nll': fm['nll'], 'brier': fm['brier'], 'avg_conf': fm['avg_conf']}
 
 
 def print_table(title, results):
-    cols = [('acc', 'Acc'), ('weighted_f1', 'wF1'), ('ece', 'ECE'), ('ece_confusable_preds', 'ECE(conf.)'),
+    cols = [('acc', 'Acc'), ('weighted_f1', 'wF1'), ('macro_f1', 'mF1'), ('ece', 'ECE'), ('ece_confusable_preds', 'ECE(conf.)'),
             ('ece_other_preds', 'ECE(other)'), ('nll', 'NLL'), ('brier', 'Brier'), ('avg_conf', 'AvgConf')]
     print('\n' + title)
     print('{:<20}'.format('method') + ''.join('{:>12}'.format(c[1]) for c in cols))
@@ -285,6 +267,7 @@ def main():
 
     # ---- MC-Dropout: S stochastic passes on validation and test ----
     enable_mc_dropout(model)
+    torch.manual_seed(args.seed)          # identical MC-Dropout randomness protocol for every checkpoint
     zv_mc = np.stack([collect_logits(model, valid_loader, args, cuda_flag)[0] for _ in range(args.mc_passes)])
     zt_mc = np.stack([collect_logits(model, test_loader, args, cuda_flag)[0] for _ in range(args.mc_passes)])
     model.eval()
@@ -294,6 +277,9 @@ def main():
     def mc_prob(z_mc, temp=1.0):
         return np.mean([softmax_np(z, temp) for z in z_mc], axis=0)
 
+    # Methods are reported in two SEPARATE groups: deterministic (dropout off) and stochastic (MC-Dropout). Every checkpoint
+    # gets the identical treatment: same ECE bins, same number of MC passes, same seed, T fitted on validation only.
+    DETERMINISTIC, STOCHASTIC = ['Uncalibrated', 'Temp scaling'], ['MC-Dropout', 'MC-Dropout + TS']
     probs = {
         'test': {
             'Uncalibrated': softmax_np(zt),
@@ -312,15 +298,35 @@ def main():
 
     summary = {'dataset': DATASET, 'checkpoint': args.load_model_state_dir, 'T': T, 'T_mc': T_mc,
                'mc_passes': args.mc_passes, 'n_bins': args.n_bins,
-               'confusable_classes': [names[c] for c in conf_classes]}
+               'confusable_classes': [names[c] for c in conf_classes],
+               'confusable_pairs': [[names[a], names[b]] for a, b in pairs],
+               'protocol': {'checkpoint': 'the file given (train.py saves the best-VALIDATION-F1 epoch)', 'ece_bins': args.n_bins,
+                            'ece_binning': 'equal-width, top-1 confidence', 'mc_passes': args.mc_passes, 'seed': args.seed,
+                            'temperature_fitted_on': 'validation set only', 'deterministic_methods': DETERMINISTIC,
+                            'stochastic_methods': STOCHASTIC, 'validation_utterances': int(len(yv)), 'test_utterances': int(len(yt)),
+                            'populations': {'pooled_pred_in_confusable': 'predicted class in ANY confusable pair (legacy pooled figure)',
+                                            'true_in_pair': 'true label is one of the two classes of the pair',
+                                            'pred_in_pair': 'predicted label is one of the two classes of the pair'}}}
     for split in ('valid', 'test'):
         res = {m: compute_metrics(p, labels[split], conf_classes, args.n_bins) for m, p in probs[split].items()}
         summary[split] = res
         tag = 'TEST (T fitted on validation -> no leakage)' if split == 'test' else 'VALIDATION (the set T was fitted on)'
-        print_table('=== {} | {} ==='.format(DATASET, tag), res)
+        print_table('=== {} | {} | DETERMINISTIC (dropout off) ==='.format(DATASET, tag), {m: res[m] for m in DETERMINISTIC})
+        print_table('=== {} | {} | STOCHASTIC ({} MC-Dropout passes) ==='.format(DATASET, tag, args.mc_passes), {m: res[m] for m in STOCHASTIC})
+    # every detailed metric is kept in the JSON: per-class P/R/F1, confusion matrix, NLL, Brier, ECE (+ per-pair, with sample counts)
+    summary['test_full'] = {m: full_metrics(p, yt, names, args.n_bins) for m, p in probs['test'].items()}
+    summary['test_pairs'] = {m: pair_breakdown(p, yt, pairs, names, args.n_bins) for m, p in probs['test'].items()}
+    for pair in summary['test_pairs']['Uncalibrated']:
+        print('\nPer-pair calibration, TEST, pair {} (ECE %, n = utterances; true_in_pair / pred_in_pair populations):'.format(pair))
+        print('{:<18}{:>14}{:>8}{:>14}{:>8}{:>12}{:>14}'.format('method', 'ECE true-in', 'n', 'ECE pred-in', 'n', 'confusions', 'conf@errors'))
+        for m in DETERMINISTIC + STOCHASTIC:
+            r = summary['test_pairs'][m][pair]
+            cf = r['confusions']
+            print('{:<18}{:>14.2f}{:>8d}{:>14.2f}{:>8d}{:>12.2f}{:>14.2f}'.format(
+                m, r['true_in_pair']['ece'], r['true_in_pair']['n'], r['pred_in_pair']['ece'], r['pred_in_pair']['n'],
+                cf['rate_of_true_in_pair'], cf['mean_conf_on_confusions']))
 
-    with open(os.path.join(args.out_dir, 'calibration_{}.json'.format(DATASET)), 'w') as f:
-        json.dump(summary, f, indent=2)
+    dump_json(os.path.join(args.out_dir, 'calibration_{}.json'.format(DATASET)), summary)
     plot_reliability(probs['test'], yt, args.n_bins,
                      os.path.join(args.out_dir, 'reliability_{}_test.png'.format(DATASET)),
                      '{} test set - reliability diagrams'.format(DATASET))

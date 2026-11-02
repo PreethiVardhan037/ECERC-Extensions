@@ -1,0 +1,8 @@
+# keep the image small: datasets, results and checkpoints are mounted as volumes (see the Dockerfile header)
+data/*
+tuning_results
+**/__pycache__
+**/*.pyc
+**/*.pkl
+*.zip
+.git

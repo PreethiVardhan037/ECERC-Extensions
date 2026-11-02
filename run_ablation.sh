@@ -1,5 +1,6 @@
 #!/bin/bash
 # Usage:  bash run_ablation.sh IEMOCAP|MELD [seed]
+# Single-seed convenience script. For the FINAL multi-seed comparison under one protocol use `bash run_final.sh` / `auto_tune.py`.
 # Trains baseline / L1 / L2 / L1+L2 / L4 / L1+L2+L4, then runs the L3 calibration (temperature scaling +
 # MC-Dropout) on every checkpoint and the L4 span benchmark.
 #
@@ -26,3 +27,6 @@ done
 
 # L4: how much context does the baseline use (fixed-span sweep) and learned span vs performance
 python span_benchmark.py --load_model_state_dir ckpt_baseline.pkl --learned_ckpts ckpt_lim4.pkl,ckpt_all.pkl --out_dir span_out | tee log_span_benchmark.txt
+
+# one table from the structured results of all six runs (ckpt_*_results.json are written by train.py)
+python ../summarize_logs.py "ckpt_*_results.json" | tee log_summary.txt
